@@ -28,7 +28,7 @@ struct VM {
     int mem = 4096;
     QString cpu = "qemu64";
     bool net = true;
-    bool audio = false;
+    bool audio = true; // audio enabled by default
     bool hda = true;
     bool vnc = false;
     int vnc_port = 5900;
@@ -76,7 +76,7 @@ static VM vmFromSettings(const QString &name) {
     vm.mem = s.value("mem", 4096).toInt();
     vm.cpu = s.value("cpu", "qemu64").toString();
     vm.net = s.value("net", 1).toInt() == 1;
-    vm.audio = s.value("audio", 0).toInt() == 1;
+    vm.audio = s.value("audio", 1).toInt() == 1;
     vm.hda = s.value("hda", 1).toInt() == 1;
     vm.vnc = s.value("vnc", 0).toInt() == 1;
     vm.vnc_port = s.value("vnc_port", 5900).toInt();
@@ -101,7 +101,7 @@ public:
         cpuEdit = new QLineEdit(this);
         cpuEdit->setText("qemu64");
         netCheck = new QCheckBox(this); netCheck->setChecked(true);
-        audioCheck = new QCheckBox(this);
+        audioCheck = new QCheckBox(this); audioCheck->setChecked(true);
         hdaCheck = new QCheckBox(this); hdaCheck->setChecked(true);
 
         vncCheck = new QCheckBox(this);
@@ -278,23 +278,25 @@ private slots:
         args << "-usb" << "-device" << "usb-tablet";
         args << "-name" << vm.name;
         if(vm.net) args << "-net" << "nic" << "-net" << "user";
+
         if(vm.audio) {
 #ifdef Q_OS_WIN
-            args << "-soundhw" << "ac97";
+            args << "-audiodev" << "dsound,id=snd0"
+                 << "-device" << "ich9-intel-hda"
+                 << "-device" << "hda-output,audiodev=snd0";
 #else
-            args << "-audiodev" << "pa,id=snd0" << "-device" << "ich9-intel-hda" << "-device" << "hda-output,audiodev=snd0";
+            args << "-audiodev" << "pa,id=snd0"
+                 << "-device" << "ich9-intel-hda"
+                 << "-device" << "hda-output,audiodev=snd0";
 #endif
         }
+
         if(vm.vnc) {
             QString vncArg = QString(":%1").arg(vm.vnc_port - 5900);
             if(vm.vnc_pass) vncArg += ",password=on";
             args << "-vnc" << vncArg;
         }
-#ifdef Q_OS_WIN
         args << "-display" << "sdl";
-#else
-        args << "-display" << "gtk";
-#endif
         args << "-monitor" << "stdio";
 
         QProcess *proc = new QProcess(this);
@@ -403,7 +405,7 @@ private slots:
                 vm.mem = s.value("mem",4096).toInt();
                 vm.cpu = s.value("cpu","qemu64").toString();
                 vm.net = s.value("net",1).toInt()==1;
-                vm.audio = s.value("audio",0).toInt()==1;
+                vm.audio = s.value("audio",1).toInt()==1;
                 vm.hda = s.value("hda",1).toInt()==1;
                 vm.vnc = s.value("vnc",0).toInt()==1;
                 vm.vnc_port = s.value("vnc_port",5900).toInt();
