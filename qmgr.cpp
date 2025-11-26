@@ -28,7 +28,7 @@ struct VM {
     int mem = 4096;
     QString cpu = "qemu64";
     bool net = true;
-    bool audio = true; // audio enabled by default
+    bool audio = false;
     bool hda = true;
     bool vnc = false;
     int vnc_port = 5900;
@@ -76,13 +76,23 @@ static VM vmFromSettings(const QString &name) {
     vm.mem = s.value("mem", 4096).toInt();
     vm.cpu = s.value("cpu", "qemu64").toString();
     vm.net = s.value("net", 1).toInt() == 1;
-    vm.audio = s.value("audio", 1).toInt() == 1;
+    vm.audio = s.value("audio", 0).toInt() == 1;
     vm.hda = s.value("hda", 1).toInt() == 1;
     vm.vnc = s.value("vnc", 0).toInt() == 1;
     vm.vnc_port = s.value("vnc_port", 5900).toInt();
     vm.vnc_pass = s.value("vnc_pass", 0).toInt() == 1;
     s.endGroup();
     return vm;
+}
+
+static QStringList getAccelArgs() {
+    QStringList args;
+#ifdef Q_OS_LINUX
+    if(QFile::exists("/dev/kvm")) args << "-enable-kvm";
+#else
+    args << "-accel" << "whpx";
+#endif
+    return args;
 }
 
 class VMDialog : public QDialog {
@@ -101,7 +111,7 @@ public:
         cpuEdit = new QLineEdit(this);
         cpuEdit->setText("qemu64");
         netCheck = new QCheckBox(this); netCheck->setChecked(true);
-        audioCheck = new QCheckBox(this); audioCheck->setChecked(true);
+        audioCheck = new QCheckBox(this);
         hdaCheck = new QCheckBox(this); hdaCheck->setChecked(true);
 
         vncCheck = new QCheckBox(this);
@@ -269,7 +279,7 @@ private slots:
         QString qemu = findQemuExecutable();
         QStringList args;
 
-        args << "-enable-kvm";
+        args << getAccelArgs(); // <-- auto-select KVM / WHPX / TCG
         args << "-m" << QString::number(vm.mem);
         if(vm.hda) args << "-hda" << vm.disk;
         if(!vm.iso.isEmpty()) args << "-cdrom" << vm.iso;
@@ -278,19 +288,7 @@ private slots:
         args << "-usb" << "-device" << "usb-tablet";
         args << "-name" << vm.name;
         if(vm.net) args << "-net" << "nic" << "-net" << "user";
-
-        if(vm.audio) {
-#ifdef Q_OS_WIN
-            args << "-audiodev" << "dsound,id=snd0"
-                 << "-device" << "ich9-intel-hda"
-                 << "-device" << "hda-output,audiodev=snd0";
-#else
-            args << "-audiodev" << "pa,id=snd0"
-                 << "-device" << "ich9-intel-hda"
-                 << "-device" << "hda-output,audiodev=snd0";
-#endif
-        }
-
+        if(vm.audio) args << "-audiodev" << "pa,id=snd0" << "-device" << "ich9-intel-hda" << "-device" << "hda-output,audiodev=snd0";
         if(vm.vnc) {
             QString vncArg = QString(":%1").arg(vm.vnc_port - 5900);
             if(vm.vnc_pass) vncArg += ",password=on";
@@ -405,7 +403,7 @@ private slots:
                 vm.mem = s.value("mem",4096).toInt();
                 vm.cpu = s.value("cpu","qemu64").toString();
                 vm.net = s.value("net",1).toInt()==1;
-                vm.audio = s.value("audio",1).toInt()==1;
+                vm.audio = s.value("audio",0).toInt()==1;
                 vm.hda = s.value("hda",1).toInt()==1;
                 vm.vnc = s.value("vnc",0).toInt()==1;
                 vm.vnc_port = s.value("vnc_port",5900).toInt();
