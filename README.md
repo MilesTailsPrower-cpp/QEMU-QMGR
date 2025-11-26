@@ -5,7 +5,7 @@ A simple VM manager for QEMU written in C++.
 
 **Linux (Debian/Ubuntu):**  
 Step 1: Install dependencies  
-Run `sudo apt-get install qt5-default cmake build-essential qemu-system-x86_64 qemu-utils libsdl2-dev -y`  
+Run `sudo apt-get install qt5-default cmake build-essential qemu-system-x86_64 qemu-utils -y`  
 
 Step 2: Download the source code and put it in a folder.  
 
@@ -14,13 +14,15 @@ Create a folder named "build" and change directories to it: `mkdir build; cd bui
 Run cmake: `cmake ..`  
 Build: `make -j$(nproc)`  
 
-Run QMGR: `./qmgr`
+Run QMGR: `./qmgr`  
+*(QEMU must already be installed; QMGR just launches it — no need to compile QEMU yourself.)*
 
 ---
 
 **Windows (MinGW):**  
-Step 1: Download and install MSYS2, SDL2, and QEMU in the default folders.  
-Step 1a: Install Qt5 via MSYS2 (the Qt website fucking sucks)  
+Step 1: Download and install MSYS2 and QEMU in the default folders.  
+
+Step 1a: Install Qt5 via MSYS2 (way easier than the website!)  
 - Open the MSYS2 MinGW 64-bit shell.  
 - Update packages: `pacman -Sy` and then `pacman -Su`  
 - Install Qt5 and MinGW toolchain: `pacman -S mingw-w64-x86_64-toolchain mingw-w64-x86_64-qt5-base`  
@@ -36,7 +38,8 @@ Step 3: Build
 
 Step 4: Copy the required Qt DLLs next to qmgr.exe: Qt5Core.dll, Qt5Gui.dll, Qt5Widgets.dll, Qt5Network.dll, Qt5PrintSupport.dll  
 
-Run QMGR: `./qmgr.exe`
+Run QMGR: `./qmgr.exe`  
+*(QEMU must already be installed; QMGR just launches it.)*
 
 ---
 
@@ -45,7 +48,7 @@ Run QMGR: `./qmgr.exe`
 1. Launch QMGR.  
 2. Click "Create VM" to make a new virtual machine.  
 3. Set the disk image, memory, CPU, network/audio, and optionally enable VNC.  
-4. Launch the VM; the SDL window will appear.  
+4. Launch the VM — the QEMU window will appear.  
 5. Use "Create Disk" to make new QCOW2 images.  
 6. Export/import VM configurations as needed.  
 7. Kill a running VM manually with the "Kill VM" button.
@@ -55,7 +58,7 @@ Run QMGR: `./qmgr.exe`
 # Notes
 
 - Make sure QEMU is installed and in your PATH.  
-- SDL2 is required for the VM window.  
+- No SDL2 or QEMU compilation required — QMGR only manages existing QEMU VMs.  
 - On Windows, copy all necessary Qt DLLs to the same folder as qmgr.exe.  
 
 ---
