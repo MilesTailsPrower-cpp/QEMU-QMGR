@@ -85,16 +85,6 @@ static VM vmFromSettings(const QString &name) {
     return vm;
 }
 
-static QStringList getAccelArgs() {
-    QStringList args;
-#ifdef Q_OS_LINUX
-    if(QFile::exists("/dev/kvm")) args << "-enable-kvm";
-#else
-    args << "-accel" << "whpx";
-#endif
-    return args;
-}
-
 class VMDialog : public QDialog {
     Q_OBJECT
 public:
@@ -279,7 +269,12 @@ private slots:
         QString qemu = findQemuExecutable();
         QStringList args;
 
-        args << getAccelArgs(); // <-- auto-select KVM / WHPX / TCG
+#ifdef Q_OS_WIN
+        args << "-accel" << "whpx";
+#else
+        args << "-accel" << "kvm";
+#endif
+
         args << "-m" << QString::number(vm.mem);
         if(vm.hda) args << "-hda" << vm.disk;
         if(!vm.iso.isEmpty()) args << "-cdrom" << vm.iso;
@@ -288,12 +283,21 @@ private slots:
         args << "-usb" << "-device" << "usb-tablet";
         args << "-name" << vm.name;
         if(vm.net) args << "-net" << "nic" << "-net" << "user";
-        if(vm.audio) args << "-audiodev" << "pa,id=snd0" << "-device" << "ich9-intel-hda" << "-device" << "hda-output,audiodev=snd0";
+
+        if(vm.audio) {
+#ifdef Q_OS_WIN
+            args << "-audiodev" << "dsound,id=snd0" << "-device" << "ich9-intel-hda" << "-device" << "hda-output,audiodev=snd0";
+#else
+            args << "-audiodev" << "pa,id=snd0" << "-device" << "ich9-intel-hda" << "-device" << "hda-output,audiodev=snd0";
+#endif
+        }
+
         if(vm.vnc) {
             QString vncArg = QString(":%1").arg(vm.vnc_port - 5900);
             if(vm.vnc_pass) vncArg += ",password=on";
             args << "-vnc" << vncArg;
         }
+
         args << "-display" << "sdl";
         args << "-monitor" << "stdio";
 
