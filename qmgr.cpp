@@ -91,7 +91,7 @@ void launch_vm(const std::map<std::string,std::string> &vm) {
 #endif
 }
 
-// Create/edit VM dialog
+// Create/Edit VM dialog
 void create_edit_vm(QWidget *parent=nullptr, const std::string &vm_name="") {
     QDialog dlg(parent);
     dlg.setWindowTitle("QMGR - Create/Edit VM");
@@ -157,37 +157,96 @@ void create_disk(QWidget *parent=nullptr) {
     QMessageBox::information(parent,"Disk Creation",ret==0?"Disk created successfully":"Failed to create disk");
 }
 
-// Main window
+// Main Window (original layout: listbox + horizontal buttons)
 int main(int argc, char **argv) {
     QApplication app(argc, argv);
     QWidget window;
     window.setWindowTitle("QMGR");
-    QVBoxLayout layout(&window);
+    window.resize(550,400);
+
+    QVBoxLayout mainLayout(&window);
 
     QListWidget vmList;
-    layout.addWidget(&vmList);
+    mainLayout.addWidget(&vmList);
 
-    QPushButton createBtn("Create VM");
-    QPushButton launchBtn("Launch VM");
+    QHBoxLayout buttonLayout;
+    QPushButton createBtn("Create");
+    QPushButton editBtn("Edit");
+    QPushButton launchBtn("Launch");
+    QPushButton exportBtn("Export");
+    QPushButton importBtn("Import");
     QPushButton diskBtn("Create Disk");
     QPushButton killBtn("Kill VM");
-    layout.addWidget(&createBtn);
-    layout.addWidget(&launchBtn);
-    layout.addWidget(&diskBtn);
-    layout.addWidget(&killBtn);
+    QPushButton quitBtn("Quit");
+
+    buttonLayout.addWidget(&createBtn);
+    buttonLayout.addWidget(&editBtn);
+    buttonLayout.addWidget(&launchBtn);
+    buttonLayout.addWidget(&exportBtn);
+    buttonLayout.addWidget(&importBtn);
+    buttonLayout.addWidget(&diskBtn);
+    buttonLayout.addWidget(&killBtn);
+    buttonLayout.addWidget(&quitBtn);
+
+    mainLayout.addLayout(&buttonLayout);
+
+    auto refresh_list = [&](){
+        vmList.clear();
+        for(auto &n : list_vms()) vmList.addItem(QString::fromStdString(n));
+    };
+    refresh_list();
 
     QObject::connect(&createBtn, &QPushButton::clicked, [&](){
         create_edit_vm(&window);
-        vmList.clear();
-        for(auto &n : list_vms()) vmList.addItem(QString::fromStdString(n));
+        refresh_list();
+    });
+
+    QObject::connect(&editBtn, &QPushButton::clicked, [&](){
+        if(vmList.currentItem())
+            create_edit_vm(&window, vmList.currentItem()->text().toStdString());
+        refresh_list();
     });
 
     QObject::connect(&launchBtn, &QPushButton::clicked, [&](){
-        auto items = vmList.selectedItems();
-        if(items.size()) {
-            auto vm = load_vm(items[0]->text().toStdString());
+        if(vmList.currentItem()) {
+            auto vm = load_vm(vmList.currentItem()->text().toStdString());
             launch_vm(vm);
         }
+    });
+
+    QObject::connect(&exportBtn, &QPushButton::clicked, [&](){
+        if(vmList.currentItem()) {
+            QString folder = QFileDialog::getExistingDirectory(&window,"Select Export Folder");
+            if(folder.isEmpty()) return;
+            auto vm = load_vm(vmList.currentItem()->text().toStdString());
+            std::ofstream cfg(folder.toStdString()+"/"+vm["name"]+".ini");
+            for(auto &[k,v]: vm) cfg<<k<<"="<<v<<"\n";
+            cfg.close();
+            QFile::copy(QString::fromStdString(vm["disk"]), folder+"/"+QString::fromStdString(vm["disk"]));
+            if(vm.count("iso")) QFile::copy(QString::fromStdString(vm["iso"]), folder+"/"+QString::fromStdString(vm["iso"]));
+            QMessageBox::information(&window,"Export","VM exported successfully");
+        }
+    });
+
+    QObject::connect(&importBtn, &QPushButton::clicked, [&](){
+        QString folder = QFileDialog::getExistingDirectory(&window,"Select Import Folder");
+        if(folder.isEmpty()) return;
+        QDir dir(folder);
+        dir.setNameFilters(QStringList() << "*.ini");
+        auto files = dir.entryList();
+        if(files.isEmpty()) return;
+        std::ifstream cfg(folder.toStdString()+"/"+files[0].toStdString());
+        std::map<std::string,std::string> vm;
+        std::string line;
+        while(std::getline(cfg,line)) {
+            auto pos = line.find("=");
+            if(pos!=std::string::npos) vm[line.substr(0,pos)] = line.substr(pos+1);
+        }
+        save_vm(vm["name"], vm);
+        QFile::copy(folder+"/"+QString::fromStdString(vm["disk"]), QString::fromStdString(vm["disk"]));
+        if(vm.count("iso")) QFile::copy(folder+"/"+QString::fromStdString(vm["iso"]), QString::fromStdString(vm["iso"]));
+        QMessageBox::information(&window,"Import","VM imported successfully");
+        refresh_list();
     });
 
     QObject::connect(&diskBtn, &QPushButton::clicked, [&](){
@@ -198,7 +257,9 @@ int main(int argc, char **argv) {
         QMessageBox::information(&window,"Kill VM","Manually kill the VM process in your system task manager.");
     });
 
-    for(auto &n : list_vms()) vmList.addItem(QString::fromStdString(n));
+    QObject::connect(&quitBtn, &QPushButton::clicked, [&](){
+        window.close();
+    });
 
     window.show();
     return app.exec();
