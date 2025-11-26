@@ -13,10 +13,8 @@ std::string QEMU_EXE =
     "qemu-system-x86_64";
 #endif
 
-// Simple VM database
 std::map<std::string, std::map<std::string,std::string>> VM_DB;
 
-// Helper functions
 void save_vm(const std::string &name, const std::map<std::string,std::string> &vm) {
     VM_DB[name] = vm;
 }
@@ -34,7 +32,6 @@ std::vector<std::string> list_vms() {
 
 void launch_vm(const std::map<std::string,std::string> &vm) {
     std::vector<std::string> cmd;
-
     cmd.push_back(QEMU_EXE);
     cmd.push_back("-enable-kvm");
     cmd.push_back("-m"); cmd.push_back(vm.at("mem"));
@@ -77,7 +74,6 @@ void launch_vm(const std::map<std::string,std::string> &vm) {
 #endif
     }
 
-    // Launch QEMU
 #ifdef _WIN32
     std::vector<const char*> argv;
     for(auto &s : cmd) argv.push_back(s.c_str());
@@ -95,7 +91,7 @@ void launch_vm(const std::map<std::string,std::string> &vm) {
 #endif
 }
 
-// Simple create/edit VM dialog
+// Create/edit VM dialog
 void create_edit_vm(QWidget *parent=nullptr, const std::string &vm_name="") {
     QDialog dlg(parent);
     dlg.setWindowTitle("QMGR - Create/Edit VM");
@@ -147,6 +143,20 @@ void create_edit_vm(QWidget *parent=nullptr, const std::string &vm_name="") {
     dlg.exec();
 }
 
+// Create QCOW2 disk
+void create_disk(QWidget *parent=nullptr) {
+    QString fileName = QFileDialog::getSaveFileName(parent,"Create QCOW2 Disk","","QCOW2 Files (*.qcow2)");
+    if(fileName.isEmpty()) return;
+
+    bool ok;
+    QString size = QInputDialog::getText(parent,"Disk Size","Enter size (e.g., 10G, 10240M):",QLineEdit::Normal,"10G",&ok);
+    if(!ok || size.isEmpty()) return;
+
+    QString cmd = QString("qemu-img create -f qcow2 \"%1\" %2").arg(fileName).arg(size);
+    int ret = system(cmd.toStdString().c_str());
+    QMessageBox::information(parent,"Disk Creation",ret==0?"Disk created successfully":"Failed to create disk");
+}
+
 // Main window
 int main(int argc, char **argv) {
     QApplication app(argc, argv);
@@ -159,9 +169,11 @@ int main(int argc, char **argv) {
 
     QPushButton createBtn("Create VM");
     QPushButton launchBtn("Launch VM");
+    QPushButton diskBtn("Create Disk");
     QPushButton killBtn("Kill VM");
     layout.addWidget(&createBtn);
     layout.addWidget(&launchBtn);
+    layout.addWidget(&diskBtn);
     layout.addWidget(&killBtn);
 
     QObject::connect(&createBtn, &QPushButton::clicked, [&](){
@@ -176,6 +188,10 @@ int main(int argc, char **argv) {
             auto vm = load_vm(items[0]->text().toStdString());
             launch_vm(vm);
         }
+    });
+
+    QObject::connect(&diskBtn, &QPushButton::clicked, [&](){
+        create_disk(&window);
     });
 
     QObject::connect(&killBtn, &QPushButton::clicked, [&](){
