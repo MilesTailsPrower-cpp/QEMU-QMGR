@@ -36,8 +36,6 @@ Step 3: Build
 - Run CMake: `cmake -G "MinGW Makefiles" -DCMAKE_PREFIX_PATH="C:/msys64/mingw64" ..`  
 - Build: `cmake --build . --config Release`  
 
-Step 4: Copy the required Qt DLLs next to qmgr.exe: Qt5Core.dll, Qt5Gui.dll, Qt5Widgets.dll, Qt5Network.dll, Qt5PrintSupport.dll  
-
 Run QMGR: `./qmgr.exe`  
 *(QEMU must already be installed; QMGR just launches it.)*
 
