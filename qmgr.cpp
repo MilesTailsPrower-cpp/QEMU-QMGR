@@ -1,6 +1,5 @@
 #include <QApplication>
 #include <QWidget>
-#include <QMainWindow>
 #include <QListWidget>
 #include <QPushButton>
 #include <QHBoxLayout>
@@ -21,6 +20,14 @@
 #include <QDebug>
 #include <QMap>
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <intrin.h> // Required for __cpuid to check CPU features
+#endif
+
+// -----------------------------
+// VM model
+// -----------------------------
 struct VM {
     QString name;
     QString disk;
@@ -35,17 +42,60 @@ struct VM {
     bool vnc_pass = false;
 };
 
+// -----------------------------
+// Helpers
+// -----------------------------
 static QString getDatabasePath() {
     return QDir(QCoreApplication::applicationDirPath()).filePath("database.ini");
+}
+
+static bool hasVirtualization() {
+#ifdef Q_OS_WIN
+    // Check CPUID for Intel VT-x (VMX) or AMD-V (SVM) support.
+    // This is more reliable than IsProcessorFeaturePresent(PF_VIRT_FIRMWARE_ENABLED)
+    // when Windows Hypervisor Platform (WHPX) or VBS is enabled on the host.
+    int cpuInfo[4] = {0}; // EAX, EBX, ECX, EDX
+    
+    // Check EAX=1 for general feature flags
+    __cpuid(cpuInfo, 1);
+    
+    // Intel VMX (Virtual Machine Extensions) is bit 5 of ECX
+    if ((cpuInfo[2] & (1 << 5)) != 0) {
+        return true;
+    }
+    
+    // Check EAX=0x80000001 for extended feature flags
+    __cpuid(cpuInfo, 0x80000001);
+    
+    // AMD SVM (Secure Virtual Machine) is bit 2 of ECX
+    if ((cpuInfo[2] & (1 << 2)) != 0) {
+        return true;
+    }
+    
+    return false;
+#else
+    // On Linux, presence of /dev/kvm typically indicates KVM is available
+    return QFile::exists("/dev/kvm");
+#endif
 }
 
 static QString findQemuExecutable() {
 #ifdef Q_OS_WIN
     QString defaultPath = "C:/Program Files/qemu/qemu-system-x86_64.exe";
-    if(QFileInfo::exists(defaultPath)) return defaultPath;
+    if (QFileInfo::exists(defaultPath)) return defaultPath;
     return "qemu-system-x86_64.exe";
 #else
     return "qemu-system-x86_64";
+#endif
+}
+
+static QString findQemuImgExecutable() {
+#ifdef Q_OS_WIN
+    QString defaultPath = "C:/Program Files/qemu/qemu-img.exe";
+    if (QFileInfo::exists(defaultPath)) return defaultPath;
+    return "qemu-img.exe";
+#else
+    return "qemu-img";
 #endif
 }
 
@@ -85,6 +135,9 @@ static VM vmFromSettings(const QString &name) {
     return vm;
 }
 
+// -----------------------------
+// Dialog for create/edit VM
+// -----------------------------
 class VMDialog : public QDialog {
     Q_OBJECT
 public:
@@ -112,12 +165,14 @@ public:
         QPushButton *browseIso = new QPushButton("Browse...", this);
 
         connect(browseDisk, &QPushButton::clicked, this, [this](){
-            QString f = QFileDialog::getOpenFileName(this,"Select Disk Image", QDir::homePath(), "Disk Images (*.qcow2 *.img *.raw);;All Files (*)");
-            if(!f.isEmpty()) diskEdit->setText(f);
+            QString f = QFileDialog::getOpenFileName(this, "Select Disk Image", QDir::homePath(),
+                                                     "Disk Images (*.qcow2 *.img *.raw);;All Files (*)");
+            if (!f.isEmpty()) diskEdit->setText(f);
         });
         connect(browseIso, &QPushButton::clicked, this, [this](){
-            QString f = QFileDialog::getOpenFileName(this,"Select ISO Image", QDir::homePath(), "ISOs (*.iso);;All Files (*)");
-            if(!f.isEmpty()) isoEdit->setText(f);
+            QString f = QFileDialog::getOpenFileName(this, "Select ISO Image", QDir::homePath(),
+                                                     "ISOs (*.iso);;All Files (*)");
+            if (!f.isEmpty()) isoEdit->setText(f);
         });
 
         form->addRow("VM Name:", nameEdit);
@@ -176,33 +231,36 @@ public:
 
 private slots:
     void onSave() {
-        if(nameEdit->text().trimmed().isEmpty()) { QMessageBox::warning(this,"Validation","VM name is required."); return; }
-        if(diskEdit->text().trimmed().isEmpty() && hdaCheck->isChecked()) { QMessageBox::warning(this,"Validation","Disk image required for primary HDD."); return; }
+        if (nameEdit->text().trimmed().isEmpty()) { QMessageBox::warning(this, "Validation", "VM name is required."); return; }
+        if (diskEdit->text().trimmed().isEmpty() && hdaCheck->isChecked()) { QMessageBox::warning(this, "Validation", "Disk image required for primary HDD."); return; }
         accept();
     }
 
 private:
-    QLineEdit *nameEdit,*diskEdit,*isoEdit,*cpuEdit;
-    QSpinBox *memSpin,*vncPortSpin;
-    QCheckBox *netCheck,*audioCheck,*hdaCheck,*vncCheck,*vncPassCheck;
+    QLineEdit *nameEdit, *diskEdit, *isoEdit, *cpuEdit;
+    QSpinBox *memSpin, *vncPortSpin;
+    QCheckBox *netCheck, *audioCheck, *hdaCheck, *vncCheck, *vncPassCheck;
 };
 
+// -----------------------------
+// Main window
+// -----------------------------
 class MainWindow : public QWidget {
     Q_OBJECT
 public:
     MainWindow(QWidget *parent=nullptr) : QWidget(parent) {
         setWindowTitle("QMGR");
-        resize(800,450);
+        resize(800, 450);
 
         listWidget = new QListWidget(this);
-        createBtn = new QPushButton("Create VM",this);
-        editBtn = new QPushButton("Edit VM",this);
-        launchBtn = new QPushButton("Launch",this);
+        createBtn = new QPushButton("Create VM", this);
+        editBtn = new QPushButton("Edit VM", this);
+        launchBtn = new QPushButton("Launch", this);
         killBtn = new QPushButton("Kill VM", this);
         createDiskBtn = new QPushButton("Create Disk", this);
-        exportBtn = new QPushButton("Export",this);
-        importBtn = new QPushButton("Import",this);
-        quitBtn = new QPushButton("Quit",this);
+        exportBtn = new QPushButton("Export", this);
+        importBtn = new QPushButton("Import", this);
+        quitBtn = new QPushButton("Quit", this);
 
         QHBoxLayout *btns = new QHBoxLayout;
         btns->addWidget(createBtn); btns->addWidget(editBtn); btns->addWidget(launchBtn);
@@ -213,14 +271,14 @@ public:
         main->addWidget(listWidget);
         main->addLayout(btns);
 
-        connect(createBtn,&QPushButton::clicked,this,&MainWindow::onCreate);
-        connect(editBtn,&QPushButton::clicked,this,&MainWindow::onEdit);
-        connect(launchBtn,&QPushButton::clicked,this,&MainWindow::onLaunch);
-        connect(killBtn,&QPushButton::clicked,this,&MainWindow::onKill);
-        connect(createDiskBtn,&QPushButton::clicked,this,&MainWindow::onCreateDisk);
-        connect(exportBtn,&QPushButton::clicked,this,&MainWindow::onExport);
-        connect(importBtn,&QPushButton::clicked,this,&MainWindow::onImport);
-        connect(quitBtn,&QPushButton::clicked,&QWidget::close);
+        connect(createBtn, &QPushButton::clicked, this, &MainWindow::onCreate);
+        connect(editBtn, &QPushButton::clicked, this, &MainWindow::onEdit);
+        connect(launchBtn, &QPushButton::clicked, this, &MainWindow::onLaunch);
+        connect(killBtn, &QPushButton::clicked, this, &MainWindow::onKill);
+        connect(createDiskBtn, &QPushButton::clicked, this, &MainWindow::onCreateDisk);
+        connect(exportBtn, &QPushButton::clicked, this, &MainWindow::onExport);
+        connect(importBtn, &QPushButton::clicked, this, &MainWindow::onImport);
+        connect(quitBtn, &QPushButton::clicked, &QWidget::close);
 
         loadList();
     }
@@ -228,13 +286,13 @@ public:
 private slots:
     void loadList() {
         listWidget->clear();
-        QSettings s(getDatabasePath(),QSettings::IniFormat);
-        for(const QString &group : s.childGroups()) listWidget->addItem(group);
+        QSettings s(getDatabasePath(), QSettings::IniFormat);
+        for (const QString &group : s.childGroups()) listWidget->addItem(group);
     }
 
     void onCreate() {
         VMDialog dlg(this);
-        if(dlg.exec()==QDialog::Accepted) {
+        if (dlg.exec() == QDialog::Accepted) {
             VM vm = dlg.getVM();
             vmToSettings(vm);
             loadList();
@@ -243,15 +301,15 @@ private slots:
 
     void onEdit() {
         auto item = listWidget->currentItem();
-        if(!item) return;
+        if (!item) return;
         QString name = item->text();
         VM vm = vmFromSettings(name);
         VMDialog dlg(this);
         dlg.setVM(vm);
-        if(dlg.exec()==QDialog::Accepted) {
+        if (dlg.exec() == QDialog::Accepted) {
             VM newvm = dlg.getVM();
-            if(newvm.name != name) {
-                QSettings s(getDatabasePath(),QSettings::IniFormat);
+            if (newvm.name != name) {
+                QSettings s(getDatabasePath(), QSettings::IniFormat);
                 s.beginGroup(name);
                 s.remove("");
                 s.endGroup();
@@ -263,52 +321,83 @@ private slots:
 
     void onLaunch() {
         auto item = listWidget->currentItem();
-        if(!item) return;
+        if (!item) return;
         QString name = item->text();
         VM vm = vmFromSettings(name);
+
+        if (vm.hda && vm.disk.isEmpty()) {
+            QMessageBox::warning(this, "Launch", "Primary HDD is enabled but no disk image is set.");
+            return;
+        }
+
         QString qemu = findQemuExecutable();
         QStringList args;
 
+        // Accelerator selection (now uses reliable CPUID check on Windows)
 #ifdef Q_OS_WIN
-        args << "-accel" << "whpx";
+        if (hasVirtualization())
+            args << "-accel" << "whpx";
+        else
+            args << "-accel" << "tcg";
 #else
-        args << "-accel" << "kvm";
+        if (hasVirtualization())
+            args << "-accel" << "kvm";
+        else
+            args << "-accel" << "tcg";
 #endif
 
+        // Core config
         args << "-m" << QString::number(vm.mem);
-        if(vm.hda) args << "-hda" << vm.disk;
-        if(!vm.iso.isEmpty()) args << "-cdrom" << vm.iso;
+        if (!vm.cpu.trimmed().isEmpty())
+            args << "-cpu" << vm.cpu;
+
+        if (vm.hda) args << "-hda" << vm.disk;
+        if (!vm.iso.isEmpty()) args << "-cdrom" << vm.iso;
+
         args << "-boot" << "menu=on";
         args << "-vga" << "std";
         args << "-usb" << "-device" << "usb-tablet";
         args << "-name" << vm.name;
-        if(vm.net) args << "-net" << "nic" << "-net" << "user";
 
-        if(vm.audio) {
+        // Networking: simple user-mode NAT
+        if (vm.net) args << "-net" << "nic" << "-net" << "user";
+
+        // Audio: platform-aware default backends
+        if (vm.audio) {
 #ifdef Q_OS_WIN
-            args << "-audiodev" << "dsound,id=snd0" << "-device" << "ich9-intel-hda" << "-device" << "hda-output,audiodev=snd0";
+            // DirectSound backend on Windows
+            args << "-audiodev" << "dsound,id=snd0"
+                 << "-device" << "ich9-intel-hda"
+                 << "-device" << "hda-output,audiodev=snd0";
 #else
-            args << "-audiodev" << "pa,id=snd0" << "-device" << "ich9-intel-hda" << "-device" << "hda-output,audiodev=snd0";
+            // PulseAudio backend on Linux; fallback to ALSA if needed
+            args << "-audiodev" << "pa,id=snd0"
+                 << "-device" << "ich9-intel-hda"
+                 << "-device" << "hda-output,audiodev=snd0";
 #endif
         }
 
-        if(vm.vnc) {
+        // VNC headless access (port mapped to :display number)
+        if (vm.vnc) {
             QString vncArg = QString(":%1").arg(vm.vnc_port - 5900);
-            if(vm.vnc_pass) vncArg += ",password=on";
+            if (vm.vnc_pass) vncArg += ",password=on";
             args << "-vnc" << vncArg;
         }
 
+        // Local display; if VNC is used, SDL still works for local
         args << "-display" << "sdl";
+        // Simple monitor via stdio
         args << "-monitor" << "stdio";
 
+        // Launch
         QProcess *proc = new QProcess(this);
         proc->setProgram(qemu);
         proc->setArguments(args);
         proc->setProcessChannelMode(QProcess::ForwardedChannels);
         proc->start();
 
-        if(!proc->waitForStarted()) {
-            QMessageBox::critical(this,"Error","Failed to start QEMU.");
+        if (!proc->waitForStarted()) {
+            QMessageBox::critical(this, "Error", "Failed to start QEMU.");
             proc->deleteLater();
             return;
         }
@@ -318,30 +407,30 @@ private slots:
 
     void onKill() {
         auto item = listWidget->currentItem();
-        if(!item) return;
+        if (!item) return;
         QString name = item->text();
-        if(runningProcs.contains(name)) {
+        if (runningProcs.contains(name)) {
             QProcess *proc = runningProcs[name];
-            if(proc->state() != QProcess::NotRunning) {
+            if (proc->state() != QProcess::NotRunning) {
                 proc->kill();
                 proc->waitForFinished();
-                QMessageBox::information(this,"Killed","VM process terminated.");
+                QMessageBox::information(this, "Killed", "VM process terminated.");
             }
             runningProcs.remove(name);
         } else {
-            QMessageBox::warning(this,"Info","No running VM process found for this VM.");
+            QMessageBox::warning(this, "Info", "No running VM process found for this VM.");
         }
     }
 
     void onCreateDisk() {
         QString file = QFileDialog::getSaveFileName(this, "Create QCOW2 Disk", QDir::homePath(), "QCOW2 Disk (*.qcow2)");
-        if(file.isEmpty()) return;
+        if (file.isEmpty()) return;
 
         bool ok;
         int sizeGB = QInputDialog::getInt(this, "Disk Size", "Enter size in GB:", 10, 1, 1024, 1, &ok);
-        if(!ok) return;
+        if (!ok) return;
 
-        QString qemuImg = "qemu-img";
+        QString qemuImg = findQemuImgExecutable();
         QStringList args;
         args << "create" << "-f" << "qcow2" << file << QString::number(sizeGB) + "G";
 
@@ -350,27 +439,41 @@ private slots:
         proc.setArguments(args);
         proc.setProcessChannelMode(QProcess::ForwardedChannels);
         proc.start();
-        if(!proc.waitForFinished()) {
-            QMessageBox::critical(this,"Error","Failed to create QCOW2 disk.");
+
+        if (!proc.waitForFinished()) {
+            QMessageBox::critical(this, "Error", "Failed to create QCOW2 disk.");
             return;
         }
 
-        QMessageBox::information(this,"Success","Disk created successfully:\n" + file);
+        if (proc.exitStatus() != QProcess::NormalExit || proc.exitCode() != 0) {
+            QMessageBox::critical(this, "Error", "qemu-img reported an error creating the disk.");
+            return;
+        }
+
+        QMessageBox::information(this, "Success", "Disk created successfully:\n" + file);
     }
 
     void onExport() {
         auto item = listWidget->currentItem();
-        if(!item) return;
+        if (!item) return;
         QString name = item->text();
-        QString folder = QFileDialog::getExistingDirectory(this,"Select export folder",QDir::homePath());
-        if(folder.isEmpty()) return;
+        QString folder = QFileDialog::getExistingDirectory(this, "Select export folder", QDir::homePath());
+        if (folder.isEmpty()) return;
 
         VM vm = vmFromSettings(name);
         QDir().mkpath(folder);
 
-        if(!vm.disk.isEmpty()) QFile::copy(vm.disk,QDir(folder).filePath(QFileInfo(vm.disk).fileName()));
-        if(!vm.iso.isEmpty()) QFile::copy(vm.iso,QDir(folder).filePath(QFileInfo(vm.iso).fileName()));
+        // Copy disk and ISO if present
+        if (!vm.disk.isEmpty()) {
+            QString dest = QDir(folder).filePath(QFileInfo(vm.disk).fileName());
+            if (dest != vm.disk) QFile::copy(vm.disk, dest);
+        }
+        if (!vm.iso.isEmpty()) {
+            QString dest = QDir(folder).filePath(QFileInfo(vm.iso).fileName());
+            if (dest != vm.iso) QFile::copy(vm.iso, dest);
+        }
 
+        // Save portable INI referencing local filenames
         QSettings exportSettings(QDir(folder).filePath(vm.name + ".ini"), QSettings::IniFormat);
         exportSettings.beginGroup(vm.name);
         exportSettings.setValue("disk", QFileInfo(vm.disk).fileName());
@@ -386,63 +489,73 @@ private slots:
         exportSettings.endGroup();
         exportSettings.sync();
 
-        QMessageBox::information(this,"Export","Export complete.");
+        QMessageBox::information(this, "Export", "Export complete.");
     }
 
     void onImport() {
-        QString folder = QFileDialog::getExistingDirectory(this,"Select import folder",QDir::homePath());
-        if(folder.isEmpty()) return;
-        QDir d(folder);
-        QStringList files = d.entryList(QStringList()<<"*.ini",QDir::Files);
-        if(files.isEmpty()) { QMessageBox::warning(this,"Import","No INI file found."); return; }
+        QString folder = QFileDialog::getExistingDirectory(this, "Select import folder", QDir::homePath());
+        if (folder.isEmpty()) return;
 
-        for(const QString &file : files) {
-            QSettings s(d.filePath(file),QSettings::IniFormat);
-            for(const QString &section : s.childGroups()) {
+        QDir d(folder);
+        QStringList files = d.entryList(QStringList() << "*.ini", QDir::Files);
+        if (files.isEmpty()) { QMessageBox::warning(this, "Import", "No INI file found."); return; }
+
+        for (const QString &file : files) {
+            QSettings s(d.filePath(file), QSettings::IniFormat);
+            for (const QString &section : s.childGroups()) {
                 s.beginGroup(section);
                 VM vm;
                 vm.name = section;
                 vm.disk = s.value("disk").toString();
                 vm.iso = s.value("iso").toString();
-                vm.mem = s.value("mem",4096).toInt();
-                vm.cpu = s.value("cpu","qemu64").toString();
-                vm.net = s.value("net",1).toInt()==1;
-                vm.audio = s.value("audio",0).toInt()==1;
-                vm.hda = s.value("hda",1).toInt()==1;
-                vm.vnc = s.value("vnc",0).toInt()==1;
-                vm.vnc_port = s.value("vnc_port",5900).toInt();
-                vm.vnc_pass = s.value("vnc_pass",0).toInt()==1;
+                vm.mem = s.value("mem", 4096).toInt();
+                vm.cpu = s.value("cpu", "qemu64").toString();
+                vm.net = s.value("net", 1).toInt() == 1;
+                vm.audio = s.value("audio", 0).toInt() == 1;
+                vm.hda = s.value("hda", 1).toInt() == 1;
+                vm.vnc = s.value("vnc", 0).toInt() == 1;
+                vm.vnc_port = s.value("vnc_port", 5900).toInt();
+                vm.vnc_pass = s.value("vnc_pass", 0).toInt() == 1;
                 s.endGroup();
 
+                // Copy referenced files into app dir and rewrite paths
                 QString exeDir = QCoreApplication::applicationDirPath();
-                if(!vm.disk.isEmpty()) {
+                if (!vm.disk.isEmpty()) {
                     QString src = d.filePath(vm.disk);
-                    QString dest = QDir(exeDir).filePath(vm.disk);
-                    QFile::copy(src,dest);
-                    vm.disk = dest;
+                    QString dest = QDir(exeDir).filePath(QFileInfo(vm.disk).fileName());
+                    if (QFileInfo::exists(src)) {
+                        QFile::copy(src, dest);
+                        vm.disk = dest;
+                    } else {
+                        vm.disk.clear();
+                    }
                 }
-                if(!vm.iso.isEmpty()) {
+                if (!vm.iso.isEmpty()) {
                     QString src = d.filePath(vm.iso);
-                    QString dest = QDir(exeDir).filePath(vm.iso);
-                    QFile::copy(src,dest);
-                    vm.iso = dest;
+                    QString dest = QDir(exeDir).filePath(QFileInfo(vm.iso).fileName());
+                    if (QFileInfo::exists(src)) {
+                        QFile::copy(src, dest);
+                        vm.iso = dest;
+                    } else {
+                        vm.iso.clear();
+                    }
                 }
 
                 vmToSettings(vm);
             }
         }
         loadList();
-        QMessageBox::information(this,"Import","Import complete.");
+        QMessageBox::information(this, "Import", "Import complete.");
     }
 
 private:
     QListWidget *listWidget;
-    QPushButton *createBtn,*editBtn,*launchBtn,*killBtn,*createDiskBtn,*exportBtn,*importBtn,*quitBtn;
-    QMap<QString,QProcess*> runningProcs;
+    QPushButton *createBtn, *editBtn, *launchBtn, *killBtn, *createDiskBtn, *exportBtn, *importBtn, *quitBtn;
+    QMap<QString, QProcess*> runningProcs;
 };
 
 int main(int argc, char **argv) {
-    QApplication app(argc,argv);
+    QApplication app(argc, argv);
     MainWindow w;
     w.show();
     return app.exec();
