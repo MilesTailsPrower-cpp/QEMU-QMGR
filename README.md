@@ -25,7 +25,7 @@ Step 1: Download and install MSYS2 and QEMU in the default folders.
 Step 1a: Install Qt5 via MSYS2 (way easier than the website!)  
 - Open the MSYS2 MinGW 64-bit shell.  
 - Update packages: `pacman -Sy` and then `pacman -Su`  
-- Install Qt5 and MinGW toolchain: `pacman -S mingw-w64-x86_64-toolchain mingw-w64-x86_64-qt5-base`  
+- Install Qt5 and MinGW toolchain: `pacman -S mingw-w64-x86_64-toolchain mingw-w64-x86_64-qt5-base mingw-w64-x86_64-cmake`  
 - Optional: `pacman -S mingw-w64-x86_64-qt5-tools` if you want designer, linguist, etc.  
 
 Step 2: Download the source code and put it in a folder.  
