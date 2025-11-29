@@ -6,7 +6,6 @@ A simple VM manager for QEMU written in C++.
 **Linux (Debian/Ubuntu):**  
 Step 1: Install dependencies  
 Run `sudo apt-get install qt5-default cmake build-essential qemu-system-x86_64 qemu-utils -y`  
-(For anyone running
 Step 2: Download the source code and put it in a folder. Or use `git clone https://github.com/MilesTailsPrower-cpp/QEMU-QMGR.git` (requires git).
 
 Step 3: Build  
