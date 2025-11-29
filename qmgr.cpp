@@ -21,6 +21,8 @@
 #include <QMap>
 #include <QComboBox>
 #include <QLabel>
+#include <QTextEdit>
+#include <QRegularExpression> // NEW: Include QRegularExpression for modern split
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -41,6 +43,7 @@ struct VM {
     bool vnc_pass = false;
     bool accel_override = false;
     QString accel_type = "default";
+    QString custom_args; // NEW: Custom QEMU arguments
 };
 
 static QString getDatabasePath() {
@@ -99,6 +102,7 @@ static void vmToSettings(const VM &vm) {
     s.setValue("vnc_pass", vm.vnc_pass ? 1 : 0);
     s.setValue("accel_override", vm.accel_override ? 1 : 0);
     s.setValue("accel_type", vm.accel_type);
+    s.setValue("custom_args", vm.custom_args); // NEW
     s.endGroup();
     s.sync();
 }
@@ -120,6 +124,7 @@ static VM vmFromSettings(const QString &name) {
     vm.vnc_pass = s.value("vnc_pass", 0).toInt() == 1;
     vm.accel_override = s.value("accel_override", 0).toInt() == 1;
     vm.accel_type = s.value("accel_type", "default").toString();
+    vm.custom_args = s.value("custom_args", "").toString(); // NEW
     s.endGroup();
     return vm;
 }
@@ -158,6 +163,10 @@ public:
         accelTypeCombo->addItem("kvm");
         accelTypeCombo->addItem("tcg");
 #endif
+        
+        customArgsEdit = new QTextEdit(this); // Custom Arguments
+        customArgsEdit->setPlaceholderText("e.g. -s -device intel-hda");
+
 
         QPushButton *browseDisk = new QPushButton("Browse...", this);
         QPushButton *browseIso = new QPushButton("Browse...", this);
@@ -188,7 +197,7 @@ public:
         form->addRow("Enable VNC Password:", vncPassCheck);
         form->addRow("Override Accelerator:", accelOverrideCheck);
         form->addRow("Accelerator Type:", accelTypeCombo);
-
+        form->addRow("Custom QEMU Arguments:", customArgsEdit); // NEW
 
         QPushButton *ok = new QPushButton("Save", this);
         QPushButton *cancel = new QPushButton("Cancel", this);
@@ -214,6 +223,7 @@ public:
         vncPassCheck->setChecked(vm.vnc_pass);
         accelOverrideCheck->setChecked(vm.accel_override);
         accelTypeCombo->setCurrentText(vm.accel_type);
+        customArgsEdit->setText(vm.custom_args); // NEW
     }
 
     VM getVM() const {
@@ -231,6 +241,7 @@ public:
         vm.vnc_pass = vncPassCheck->isChecked();
         vm.accel_override = accelOverrideCheck->isChecked();
         vm.accel_type = accelTypeCombo->currentText();
+        vm.custom_args = customArgsEdit->toPlainText().trimmed(); // NEW
         return vm;
     }
 
@@ -247,6 +258,7 @@ private:
     QCheckBox *netCheck, *audioCheck, *hdaCheck, *vncCheck, *vncPassCheck;
     QCheckBox *accelOverrideCheck;
     QComboBox *accelTypeCombo;
+    QTextEdit *customArgsEdit; // NEW
 };
 
 class DeleteConfirmDialog : public QDialog {
@@ -553,8 +565,19 @@ private slots:
             args << "-vnc" << vncArg;
         }
 
-        args << "-display" << "sdl";
+        // Default display and monitor setup (moved from the VNC block)
+        if (!vm.vnc) {
+             args << "-display" << "sdl";
+        }
         args << "-monitor" << "stdio";
+
+        // FIX: Replaced deprecated QString::split(QRegExp, SplitBehavior) with modern QString::split(QRegularExpression, Qt::SplitBehavior)
+        if (!vm.custom_args.isEmpty()) {
+            QRegularExpression rx("\\s+"); // Matches one or more whitespace characters
+            QStringList customArgs = vm.custom_args.split(rx, Qt::SkipEmptyParts);
+            args << customArgs;
+        }
+
 
         QProcess *proc = new QProcess(this);
         proc->setProgram(qemu);
@@ -652,6 +675,7 @@ private slots:
         exportSettings.setValue("vnc_pass", vm.vnc_pass ? 1 : 0);
         exportSettings.setValue("accel_override", vm.accel_override ? 1 : 0);
         exportSettings.setValue("accel_type", vm.accel_type);
+        exportSettings.setValue("custom_args", vm.custom_args); // NEW
         exportSettings.endGroup();
         exportSettings.sync();
 
@@ -684,6 +708,7 @@ private slots:
                 vm.vnc_pass = s.value("vnc_pass", 0).toInt() == 1;
                 vm.accel_override = s.value("accel_override", 0).toInt() == 1;
                 vm.accel_type = s.value("accel_type", "default").toString();
+                vm.custom_args = s.value("custom_args", "").toString(); // NEW
                 s.endGroup();
 
                 QString exeDir = QCoreApplication::applicationDirPath();
