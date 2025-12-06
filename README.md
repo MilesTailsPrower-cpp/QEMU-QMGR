@@ -6,7 +6,7 @@ A simple VM manager for QEMU written in C++.
 **Linux (Debian/Ubuntu):**  
 Step 1: Install dependencies  
 Run `sudo apt-get install qt5-default cmake build-essential qemu-system-x86_64 qemu-utils -y`  
-Step 2: Download the source code and put it in a folder. Or use `git clone https://github.com/MilesTailsPrower-cpp/QEMU-QMGR.git` (requires git).
+Step 2: Download the source code and put it in a folder. Or use `git clone https://github.com/ayoKolossos/QEMU-QMGR.git` (requires git).
 
 Step 3: Build  
 Create a folder named "build" and change directories to it: `mkdir build; cd build`  
@@ -27,7 +27,7 @@ Step 1a: Install Qt5 via MSYS2 (way easier than the website!)
 - Install Qt5 and MinGW toolchain: `pacman -S mingw-w64-x86_64-toolchain mingw-w64-x86_64-qt5-base mingw-w64-x86_64-cmake`  
 - Optional: `pacman -S mingw-w64-x86_64-qt5-tools` if you want designer, linguist, etc.  
 
-Step 2: Download the source code and put it in a folder. Or use `git clone https://github.com/MilesTailsPrower-cpp/QEMU-QMGR` (requires git).
+Step 2: Download the source code and put it in a folder. Or use `git clone https://github.com/ayoKolossos/QEMU-QMGR` (requires git).
 
 Step 3: Build  
 - Open the MSYS2 MinGW 64-bit shell and go to your source folder.  
